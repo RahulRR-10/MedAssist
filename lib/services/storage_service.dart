@@ -15,13 +15,15 @@ class StorageService {
     // Always add as new prescription (for stacking on main screen)
     // Each prescription from web app should be treated as unique
     prescriptions.add(prescription);
-    
+
     print('📋 Added new prescription: ${prescription.id}');
     print('📋 Total prescriptions now: ${prescriptions.length}');
 
     // Save to shared preferences
     await _savePrescriptionList(prescriptions);
-  }  Future<List<PrescriptionData>> getPrescriptions() async {
+  }
+
+  Future<List<PrescriptionData>> getPrescriptions() async {
     try {
       final prefs = await SharedPreferences.getInstance().timeout(
         const Duration(seconds: 5),

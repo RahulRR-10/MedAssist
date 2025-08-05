@@ -137,7 +137,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           title: const Text(
             'Delete Prescription',
             style: TextStyle(fontWeight: FontWeight.w600),
@@ -149,10 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
+              child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -162,7 +161,9 @@ class _HomeScreenState extends State<HomeScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red[400],
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: const Text('Delete'),
             ),
@@ -176,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await _storageService.deletePrescription(prescription.id);
       await _loadPrescriptions();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -213,21 +214,19 @@ class _HomeScreenState extends State<HomeScreen> {
         shadowColor: Colors.transparent,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: Colors.blue.withOpacity(0.1),
-          ),
+          child: Container(height: 1, color: Colors.blue.withOpacity(0.1)),
         ),
       ),
       body: Container(
         color: Colors.grey[50],
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                ),
-              )
-            : _prescriptions.isEmpty
+        child:
+            _isLoading
+                ? const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                  ),
+                )
+                : _prescriptions.isEmpty
                 ? _buildEmptyState()
                 : _buildPrescriptionList(),
       ),
@@ -282,11 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  color: Colors.blue[400],
-                  size: 20,
-                ),
+                Icon(Icons.info_outline, color: Colors.blue[400], size: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -321,21 +316,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPrescriptionCard(PrescriptionData prescription) {
-    final isRecent = DateTime.now().difference(prescription.createdAt).inHours < 24;
-    
+    final isRecent =
+        DateTime.now().difference(prescription.createdAt).inHours < 24;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
       shadowColor: Colors.blue.withOpacity(0.1),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => PrescriptionDetailsScreen(prescription: prescription),
+              builder:
+                  (context) =>
+                      PrescriptionDetailsScreen(prescription: prescription),
             ),
           );
         },
@@ -381,7 +377,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           if (isRecent)
                             Container(
                               margin: const EdgeInsets.only(top: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.blue,
                                 borderRadius: BorderRadius.circular(8),
@@ -399,28 +398,39 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     PopupMenuButton<String>(
-                      icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 20),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      icon: Icon(
+                        Icons.more_vert,
+                        color: Colors.grey[600],
+                        size: 20,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       onSelected: (String result) {
                         if (result == 'delete') {
                           _showDeleteConfirmation(prescription);
                         }
                       },
-                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                        PopupMenuItem<String>(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete_outline, color: Colors.red[400], size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Delete',
-                                style: TextStyle(color: Colors.red[400]),
+                      itemBuilder:
+                          (BuildContext context) => <PopupMenuEntry<String>>[
+                            PopupMenuItem<String>(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red[400],
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Delete',
+                                    style: TextStyle(color: Colors.red[400]),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      ],
+                            ),
+                          ],
                     ),
                   ],
                 ),
@@ -476,10 +486,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 4),
                     Text(
                       'Tap for details',
-                      style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
                     ),
                   ],
                 ),
@@ -507,10 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Colors.black87,
-            ),
+            style: const TextStyle(fontSize: 13, color: Colors.black87),
           ),
         ),
       ],
