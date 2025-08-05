@@ -43,3 +43,83 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# iOS related
+/ios/Flutter/App.framework
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/ephemeral/
+/ios/Flutter/flutter_export_environment.sh
+/ios/ServiceDefinitions.json
+/ios/Runner/GeneratedPluginRegistrant.*
+
+# Web related
+/web/
+
+# Windows related
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugin_registrant.h
+
+# Firebase configuration
+# Keep these commented if you want to include them in version control
+# google-services.json
+# GoogleService-Info.plist
+
+# Firebase Admin SDK private keys - IMPORTANT: Keep these secret!
+*firebase-adminsdk*.json
+firebase-adminsdk-*.json
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# FCM tokens (sensitive)
+fcm_token.txt
+fcm_tokens/
+
+# Test files (optional - remove if you want to include them)
+test_*.js
+*_test.js
+custom_time_test.js
+test_web_app_prescription.js
+test_fcm_token.js
+test_prescription.js
+
+# Logs
+logs
+*.log
+
+# IDE
+.vscode/settings.json
+.vscode/launch.json
+
+# Temporary files
+*.tmp
+*.temp
+
+# Firebase cache
+.firebase/
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Mac specific
+.DS_Store?
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# MedAssist specific
+# Uncomment these if you want to exclude them from version control
+# medassist_notification_service.js
