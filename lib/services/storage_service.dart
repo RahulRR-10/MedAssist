@@ -21,19 +21,6 @@ class StorageService {
 
     // Save to shared preferences
     await _savePrescriptionList(prescriptions);
-  }
-
-  Future<void> deletePrescription(String prescriptionId) async {
-    final prescriptions = await getPrescriptions();
-    
-    // Remove prescription with matching ID
-    prescriptions.removeWhere((prescription) => prescription.id == prescriptionId);
-    
-    print('📋 Deleted prescription: $prescriptionId');
-    print('📋 Total prescriptions now: ${prescriptions.length}');
-
-    // Save updated list to shared preferences
-    await _savePrescriptionList(prescriptions);
   }  Future<List<PrescriptionData>> getPrescriptions() async {
     try {
       final prefs = await SharedPreferences.getInstance().timeout(
