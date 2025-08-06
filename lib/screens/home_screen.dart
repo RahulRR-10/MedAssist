@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:provider/provider.dart';
 import '../models/prescription_model.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
+import '../providers/auth_provider.dart';
 import '../utils/logger.dart';
 import 'prescription_details_screen.dart';
 
@@ -212,6 +214,58 @@ class _HomeScreenState extends State<HomeScreen> {
         foregroundColor: Colors.blue[700],
         elevation: 0,
         shadowColor: Colors.transparent,
+        actions: [
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              return PopupMenuButton<String>(
+                icon: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.blue.shade100,
+                  child: Icon(
+                    Icons.person,
+                    size: 18,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+                onSelected: (value) async {
+                  if (value == 'logout') {
+                    _showLogoutDialog(context, authProvider);
+                  } else if (value == 'profile') {
+                    _showUserProfile(context, authProvider);
+                  }
+                },
+                itemBuilder: (BuildContext context) {
+                  return [
+                    PopupMenuItem<String>(
+                      value: 'profile',
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_outline, color: Colors.grey[600]),
+                          const SizedBox(width: 12),
+                          Text('Profile'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'logout',
+                      child: Row(
+                        children: [
+                          Icon(Icons.logout, color: Colors.red[600]),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Logout',
+                            style: TextStyle(color: Colors.red[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ];
+                },
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: Colors.blue.withOpacity(0.1)),
@@ -518,6 +572,103 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await authProvider.logout();
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red[600]),
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showUserProfile(BuildContext context, AuthProvider authProvider) {
+    final user = authProvider.currentUser;
+    if (user == null) return;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('User Profile'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildProfileRow('Name', user.name),
+                _buildProfileRow('Username', user.username),
+                _buildProfileRow('Email', user.email),
+                _buildProfileRow('Phone', user.phone),
+                _buildProfileRow('Gender', user.gender),
+                if (user.currentIllness != null)
+                  _buildProfileRow('Current Illness', user.currentIllness!),
+                if (user.address != null)
+                  _buildProfileRow(
+                    'City',
+                    user.address!.city ?? 'Not specified',
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildProfileRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
