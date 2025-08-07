@@ -1,7 +1,16 @@
-const admin = require("firebase-admin");
+const express = require("express");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
-const { PrescriptionMobile } = require("./models/prescription_mobile");
+const admin = require("firebase-admin");
 require("dotenv").config();
+
+const app = express();
+const PORT = process.env.PORT || 5001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
 
 // Firebase service account configuration
 const serviceAccount = require("./medassist-f675c-firebase-adminsdk-fbsvc-4a4975b192.json");
@@ -13,62 +22,81 @@ if (!admin.apps.length) {
   });
 }
 
-class MedAssistNotificationService {
+// MongoDB Schema
+const medicationSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  beforeAfterFood: { type: String, enum: ["Before", "After"], required: true },
+  schedules: [
+    {
+      startDate: { type: Date, required: true },
+      endDate: { type: Date, required: true },
+      dosage: { type: String, required: true },
+      times: [{ type: String, required: true }],
+    },
+  ],
+});
+
+// Patient schema for authentication (test.patients collection)
+const patientSchema = new mongoose.Schema(
+  {
+    username: { type: String, unique: true, required: true },
+    password: { type: String, required: true },
+    fcmToken: { type: String }, // FCM token stored in patients collection
+    // Add other patient fields as needed
+    name: { type: String },
+    email: { type: String },
+    phone: { type: String },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+const prescriptionMobileSchema = new mongoose.Schema(
+  {
+    username: { type: String, unique: true, required: true },
+    password: { type: String, required: true },
+    prescriptions: [medicationSchema],
+    fcmToken: { type: String },
+    lastProcessed: { type: Date, default: Date.now },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+const Patient = mongoose.model("Patient", patientSchema);
+const PrescriptionMobile = mongoose.model(
+  "PrescriptionMobile",
+  prescriptionMobileSchema
+);
+
+// Notification Service Class
+class MobileNotificationService {
   constructor() {
     this.scheduledReminders = new Map();
-    this.mongoConnected = false;
-    this.monitoringUsers = new Set(); // Track users being monitored
+    this.monitoringUsers = new Set();
     this.pollInterval = null;
-  }
-
-  // Connect to MongoDB
-  async connectToMongoDB() {
-    try {
-      if (this.mongoConnected) {
-        console.log("📊 MongoDB already connected");
-        return true;
-      }
-
-      const mongoUri = process.env.MONGO_URI;
-      if (!mongoUri) {
-        throw new Error("MONGO_URI not found in environment variables");
-      }
-
-      await mongoose.connect(mongoUri, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-        dbName: "test", // Specify the database name
-      });
-
-      console.log("✅ Connected to MongoDB successfully");
-      this.mongoConnected = true;
-      return true;
-    } catch (error) {
-      console.error("❌ Failed to connect to MongoDB:", error.message);
-      this.mongoConnected = false;
-      return false;
-    }
   }
 
   // Start monitoring prescriptions for a specific user
   async startMonitoringUser(username, fcmToken) {
     try {
-      // Connect to MongoDB if not already connected
-      if (!this.mongoConnected) {
-        const connected = await this.connectToMongoDB();
-        if (!connected) {
-          throw new Error("Failed to connect to MongoDB");
-        }
-      }
+      // Update user's FCM token in Patient collection
+      await Patient.findOneAndUpdate(
+        { username },
+        { fcmToken },
+        { upsert: false }
+      );
 
-      // Update user's FCM token in database
+      // Also update in PrescriptionMobile collection for backward compatibility
       await PrescriptionMobile.findOneAndUpdate(
         { username },
         {
           fcmToken,
           lastProcessed: new Date(),
         },
-        { upsert: false } // Don't create if user doesn't exist
+        { upsert: false }
       );
 
       this.monitoringUsers.add(username);
@@ -132,7 +160,6 @@ class MedAssistNotificationService {
       // Get prescriptions that haven't been processed yet
       const unprocessedPrescriptions = user.prescriptions.filter(
         (prescription) => {
-          // Check if prescription was added after last processing
           return (
             prescription._id &&
             (!user.lastProcessed ||
@@ -184,16 +211,9 @@ class MedAssistNotificationService {
     }
   }
 
-  // Get all prescriptions for a user (for mobile app to download)
+  // Get all prescriptions for a user
   async getUserPrescriptions(username) {
     try {
-      if (!this.mongoConnected) {
-        const connected = await this.connectToMongoDB();
-        if (!connected) {
-          throw new Error("Failed to connect to MongoDB");
-        }
-      }
-
       const user = await PrescriptionMobile.findOne({ username });
       if (!user) {
         return { success: false, prescriptions: [], error: "User not found" };
@@ -213,7 +233,7 @@ class MedAssistNotificationService {
     }
   }
 
-  // Send prescription received notification (immediate)
+  // Send prescription received notification
   async sendPrescriptionNotification(prescriptionData, fcmToken, username) {
     try {
       console.log(
@@ -485,118 +505,6 @@ class MedAssistNotificationService {
     }
   }
 
-  // Process a complete prescription from your web app (legacy method - kept for compatibility)
-  async processPrescription(prescriptionData) {
-    console.log("🚀 Processing complete prescription workflow...");
-    console.log(`📋 Patient: ${prescriptionData.patientId}`);
-    console.log(`📋 Diagnosis: ${prescriptionData.diagnosis}`);
-    console.log(`📋 Medications: ${prescriptionData.medications.length}`);
-
-    try {
-      // Make each prescription unique by adding timestamp to ID
-      const uniquePrescription = {
-        ...prescriptionData,
-        _id: `${prescriptionData._id}_${Date.now()}`, // Make ID unique with timestamp
-        createdAt: new Date().toISOString(), // Update creation time
-        updatedAt: new Date().toISOString(), // Update modification time
-      };
-
-      console.log(`📋 Unique Prescription ID: ${uniquePrescription._id}`);
-
-      // Step 1: Send immediate prescription received notification
-      console.log("\n📬 Step 1: Sending prescription received notification...");
-      const prescriptionSent = await this.sendPrescriptionNotification(
-        uniquePrescription
-      );
-
-      if (!prescriptionSent) {
-        console.log("❌ Failed to send prescription notification");
-        return { success: false, scheduled: 0 };
-      }
-
-      console.log("✅ Prescription notification sent!");
-
-      // Step 2: Schedule all medication reminders using unique prescription
-      console.log("\n⏰ Step 2: Scheduling medication reminders...");
-      let totalScheduled = 0;
-
-      uniquePrescription.medications.forEach((medication, medIndex) => {
-        console.log(
-          `\n💊 Processing medication ${medIndex + 1}: ${medication.name}`
-        );
-
-        medication.schedules.forEach((schedule, schedIndex) => {
-          console.log(`   📅 Schedule ${schedIndex + 1}: ${schedule.dosage}`);
-
-          const startDate = new Date(schedule.startDate);
-          const endDate = new Date(schedule.endDate);
-
-          // Schedule for each day in the range
-          for (
-            let date = new Date(startDate);
-            date <= endDate;
-            date.setDate(date.getDate() + 1)
-          ) {
-            schedule.times.forEach((timeString, timeIndex) => {
-              const reminderTime = this.parseTimeString(
-                timeString,
-                new Date(date)
-              );
-
-              // Skip times that have already passed
-              if (reminderTime <= new Date()) {
-                console.log(
-                  `     ⏰ ${timeString} on ${date.toDateString()} - SKIPPED (past time)`
-                );
-                return;
-              }
-
-              const reminderId = `${medication._id}_${
-                schedule._id
-              }_${reminderTime.getTime()}_${Date.now()}`;
-
-              const success = this.scheduleReminder(
-                reminderId,
-                `💊 ${medication.name}`,
-                `Time to take ${schedule.dosage} - ${medication.beforeAfterFood} food`,
-                reminderTime,
-                {
-                  medicationName: medication.name,
-                  dosage: schedule.dosage,
-                  beforeAfterFood: medication.beforeAfterFood,
-                  time: timeString,
-                  prescriptionId: uniquePrescription._id, // Use unique prescription ID
-                  diagnosis: uniquePrescription.diagnosis,
-                }
-              );
-
-              if (success) {
-                totalScheduled++;
-                console.log(
-                  `     ⏰ ${timeString} on ${date.toDateString()} - SCHEDULED`
-                );
-              }
-            });
-          }
-        });
-      });
-
-      console.log(`\n✅ Prescription workflow completed successfully!`);
-      console.log(`   📬 Prescription notification: SENT`);
-      console.log(`   ⏰ Medication reminders scheduled: ${totalScheduled}`);
-      console.log(`   🆔 Unique Prescription ID: ${uniquePrescription._id}`);
-
-      return {
-        success: true,
-        scheduled: totalScheduled,
-        prescriptionId: uniquePrescription._id,
-      };
-    } catch (error) {
-      console.error("❌ Error processing prescription:", error);
-      return { success: false, scheduled: 0, error: error.message };
-    }
-  }
-
   // Parse time string (e.g., "11:30 PM") into a Date object for a specific date
   parseTimeString(timeString, baseDate = new Date()) {
     const [time, ampm] = timeString.split(" ");
@@ -609,46 +517,6 @@ class MedAssistNotificationService {
     const result = new Date(baseDate);
     result.setHours(hour24, parseInt(minutes), 0, 0);
     return result;
-  }
-
-  // Get status of all scheduled reminders
-  getScheduledReminders() {
-    return Array.from(this.scheduledReminders.entries()).map(
-      ([id, reminder]) => ({
-        id,
-        scheduledTime: reminder.scheduledTime,
-        title: reminder.title,
-        body: reminder.body,
-      })
-    );
-  }
-
-  // Cancel all reminders for a prescription
-  cancelPrescriptionReminders(prescriptionId) {
-    const reminders = Array.from(this.scheduledReminders.keys());
-    let cancelled = 0;
-
-    reminders.forEach((id) => {
-      if (id.includes(prescriptionId)) {
-        const reminder = this.scheduledReminders.get(id);
-        if (reminder) {
-          clearTimeout(reminder.timeoutId);
-          this.scheduledReminders.delete(id);
-          cancelled++;
-        }
-      }
-    });
-
-    console.log(
-      `🚫 Cancelled ${cancelled} reminders for prescription ${prescriptionId}`
-    );
-    return cancelled;
-  }
-
-  // Update FCM token when app cache is cleared
-  updateFCMToken(newToken) {
-    this.fcmToken = newToken;
-    console.log("📱 FCM token updated:", newToken);
   }
 
   // Test FCM connectivity
@@ -674,77 +542,387 @@ class MedAssistNotificationService {
       return false;
     }
   }
+
+  // Get status of all scheduled reminders
+  getScheduledReminders() {
+    return Array.from(this.scheduledReminders.entries()).map(
+      ([id, reminder]) => ({
+        id,
+        scheduledTime: reminder.scheduledTime,
+        title: reminder.title,
+        body: reminder.body,
+      })
+    );
+  }
 }
 
-// Export for use in your web app
-module.exports = MedAssistNotificationService;
+// Initialize notification service
+const notificationService = new MobileNotificationService();
 
-// Example usage (remove this section when integrating into your web app)
-if (require.main === module) {
-  console.log("🚀 MedAssist Notification Service - Example Usage");
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  dbName: "test",
+});
 
-  // Example prescription data
-  const examplePrescription = {
-    patientId: "688133fd94b4c63ce43c5fd7",
-    diagnosis: "Test Prescription22",
-    symptom: "headache",
-    medications: [
-      {
-        name: "Sample Medicine",
-        beforeAfterFood: "Before",
-        schedules: [
-          {
-            startDate: new Date().toISOString(),
-            endDate: new Date(
-              Date.now() + 2 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-            dosage: "250mg",
-            times: [
-              new Date(Date.now() + 2 * 60 * 1000).toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "2-digit",
-                hour12: true,
-              }),
-            ],
-            _id: "sample_schedule_id",
-          },
-        ],
-        _id: "sample_medication_id",
+// Middleware to verify JWT token
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "Access token required" });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: "Invalid or expired token" });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// =============================================================================
+// API ROUTES
+// =============================================================================
+
+// Auth endpoints
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res
+        .status(400)
+        .json({ error: "Username and password are required" });
+    }
+
+    // Find user in Patient collection for authentication
+    const patient = await Patient.findOne({ username });
+    if (!patient) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Check password
+    if (patient.password !== password) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Also check/create prescription mobile record for this user
+    let prescriptionUser = await PrescriptionMobile.findOne({ username });
+    if (!prescriptionUser) {
+      // Create prescription mobile record if it doesn't exist
+      prescriptionUser = new PrescriptionMobile({
+        username: patient.username,
+        password: patient.password, // Keep same password for consistency
+        prescriptions: [],
+        fcmToken: null,
+        lastProcessed: new Date(),
+      });
+      await prescriptionUser.save();
+      console.log(`📋 Created prescription record for new user: ${username}`);
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { username: patient.username, userId: patient._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Return user data and token
+    res.json({
+      token,
+      user: {
+        username: patient.username,
+        id: patient._id,
+        name: patient.name,
+        email: patient.email,
+        phone: patient.phone,
+        prescriptions: prescriptionUser.prescriptions,
+        lastUpdated: prescriptionUser.updatedAt,
       },
-    ],
-    followUpDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    notes: "",
-    _id: "sample_prescription_id",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    __v: 0,
-  };
-
-  // Initialize service
-  const notificationService = new MedAssistNotificationService();
-
-  // Process the prescription
-  notificationService
-    .processPrescription(examplePrescription)
-    .then((result) => {
-      if (result.success) {
-        console.log(
-          `\n🎉 Example completed! ${result.scheduled} reminders scheduled.`
-        );
-
-        // Keep process alive to send scheduled reminders
-        setInterval(() => {
-          const pending = notificationService.getScheduledReminders();
-          if (pending.length === 0) {
-            console.log("✅ All reminders sent. Example completed!");
-            process.exit(0);
-          } else {
-            console.log(`⏳ ${pending.length} reminders pending...`);
-          }
-        }, 30000);
-      } else {
-        console.log("❌ Example failed:", result.error);
-        process.exit(1);
-      }
     });
-}
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update FCM token
+app.post("/api/auth/update-fcm-token", authenticateToken, async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    const { username } = req.user;
+
+    if (!fcmToken) {
+      return res.status(400).json({ error: "FCM token is required" });
+    }
+
+    // Update user's FCM token in database and start monitoring
+    await notificationService.startMonitoringUser(username, fcmToken);
+
+    res.json({ message: "FCM token updated successfully" });
+  } catch (error) {
+    console.error("FCM token update error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get user profile
+app.get("/api/auth/profile", authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.user;
+
+    // Find user in Patient collection
+    const patient = await Patient.findOne({ username }).select("-password");
+    if (!patient) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get prescription data
+    const prescriptionUser = await PrescriptionMobile.findOne({ username });
+
+    res.json({
+      user: {
+        username: patient.username,
+        id: patient._id,
+        name: patient.name,
+        email: patient.email,
+        phone: patient.phone,
+        fcmToken: patient.fcmToken,
+        prescriptions: prescriptionUser ? prescriptionUser.prescriptions : [],
+        lastUpdated: patient.updatedAt,
+        createdAt: patient.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Profile error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get user prescriptions
+app.get("/api/prescriptions", authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.user;
+
+    const result = await notificationService.getUserPrescriptions(username);
+
+    if (result.success) {
+      res.json({
+        prescriptions: result.prescriptions,
+        lastUpdated: result.lastUpdated,
+      });
+    } else {
+      res.status(404).json({ error: result.error });
+    }
+  } catch (error) {
+    console.error("Get prescriptions error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Sync prescriptions (force check for new prescriptions)
+app.post("/api/prescriptions/sync", authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.user;
+
+    // Get user's current FCM token
+    const user = await PrescriptionMobile.findOne({ username });
+    if (!user || !user.fcmToken) {
+      return res
+        .status(400)
+        .json({ error: "User not found or FCM token not set" });
+    }
+
+    // Process any new prescriptions
+    const result = await notificationService.processUserPrescriptions(username);
+
+    if (result.success) {
+      // Get updated prescriptions
+      const prescriptionsResult =
+        await notificationService.getUserPrescriptions(username);
+
+      res.json({
+        message: "Prescriptions synced successfully",
+        processed: result.processed,
+        scheduled: result.scheduled,
+        prescriptions: prescriptionsResult.prescriptions,
+      });
+    } else {
+      res.status(500).json({ error: result.error });
+    }
+  } catch (error) {
+    console.error("Sync prescriptions error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Admin endpoint to add prescriptions (for web app integration)
+app.post("/api/admin/prescriptions", async (req, res) => {
+  try {
+    const { username, prescription } = req.body;
+
+    if (!username || !prescription) {
+      return res
+        .status(400)
+        .json({ error: "Username and prescription data are required" });
+    }
+
+    // Add prescription to user's account WITHOUT updating lastProcessed
+    // This allows the new prescription to be detected and processed
+    const user = await PrescriptionMobile.findOneAndUpdate(
+      { username },
+      {
+        $push: { prescriptions: prescription },
+        // Removed: $set: { lastProcessed: new Date() }
+      },
+      { new: true, upsert: false }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    console.log(
+      `📋 Admin: Added prescription "${prescription.name}" for user ${username}`
+    );
+
+    // Process the new prescription if user has FCM token
+    if (user.fcmToken) {
+      console.log(`📋 Admin: Processing prescriptions for user ${username}...`);
+      const result = await notificationService.processUserPrescriptions(
+        username
+      );
+      console.log(`📋 Admin: Processing result:`, result);
+
+      res.json({
+        message: "Prescription added and processed successfully",
+        prescriptionId: prescription._id,
+        scheduled: result.scheduled || 0,
+      });
+    } else {
+      res.json({
+        message:
+          "Prescription added successfully (no FCM token for notifications)",
+        prescriptionId: prescription._id,
+      });
+    }
+  } catch (error) {
+    console.error("Add prescription error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    mongoConnected: mongoose.connection.readyState === 1,
+    monitoringUsers: notificationService.monitoringUsers.size,
+    scheduledReminders: notificationService.scheduledReminders.size,
+  });
+});
+
+// Test notification endpoint
+app.post("/api/test/notification", authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.user;
+
+    const user = await PrescriptionMobile.findOne({ username });
+    if (!user || !user.fcmToken) {
+      return res
+        .status(400)
+        .json({ error: "User not found or FCM token not set" });
+    }
+
+    // Send test notification
+    const success = await notificationService.testConnection(user.fcmToken);
+
+    if (success) {
+      res.json({ message: "Test notification sent successfully" });
+    } else {
+      res.status(500).json({ error: "Failed to send test notification" });
+    }
+  } catch (error) {
+    console.error("Test notification error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get scheduled reminders endpoint
+app.get("/api/admin/scheduled-reminders", (req, res) => {
+  try {
+    const reminders = notificationService.getScheduledReminders();
+    res.json({
+      count: reminders.length,
+      reminders: reminders,
+    });
+  } catch (error) {
+    console.error("Get scheduled reminders error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Force process prescriptions for a user (admin endpoint)
+app.post("/api/admin/force-process", async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    console.log(
+      `🔧 Admin: Force processing prescriptions for user: ${username}`
+    );
+
+    // Reset lastProcessed to force reprocessing
+    await PrescriptionMobile.findOneAndUpdate(
+      { username },
+      { lastProcessed: new Date(0) } // Set to epoch to force all prescriptions to be considered new
+    );
+
+    // Get user's FCM token
+    const user = await PrescriptionMobile.findOne({ username });
+    if (!user || !user.fcmToken) {
+      return res.status(400).json({ error: "User not found or no FCM token" });
+    }
+
+    // Force process
+    const result = await notificationService.processUserPrescriptions(username);
+
+    console.log(`🔧 Admin: Force processing result:`, result);
+
+    res.json({
+      message: "Force processing completed",
+      result: result,
+    });
+  } catch (error) {
+    console.error("Force process error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 MedAssist Mobile Server running on port ${PORT}`);
+  console.log(
+    `📊 MongoDB URI: ${process.env.MONGO_URI ? "Configured" : "Missing"}`
+  );
+  console.log(
+    `🔐 JWT Secret: ${process.env.JWT_SECRET ? "Configured" : "Missing"}`
+  );
+  console.log(
+    `📱 Firebase Admin: ${
+      admin.apps.length > 0 ? "Initialized" : "Not initialized"
+    }`
+  );
+  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+});
+
+module.exports = app;

@@ -22,6 +22,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     _usernameController.addListener(_validateForm);
     _passwordController.addListener(_validateForm);
+
+    // Pre-fill with test credentials for easier testing
+    _usernameController.text = 'amishaab';
+    _passwordController.text = 'iukune';
+    _validateForm();
   }
 
   @override

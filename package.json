@@ -1,11 +1,11 @@
 {
-  "name": "medassist-auth-api",
+  "name": "medassist-mobile-server",
   "version": "1.0.0",
-  "description": "Authentication API for MedAssist mobile app",
-  "main": "medassist_auth_api.js",
+  "description": "Complete mobile server for MedAssist - Authentication, prescription management, and notification scheduling",
+  "main": "mobile_server.js",
   "scripts": {
-    "start": "node medassist_auth_api.js",
-    "dev": "nodemon medassist_auth_api.js"
+    "start": "node mobile_server.js",
+    "dev": "nodemon mobile_server.js"
   },
   "dependencies": {
     "express": "^4.18.2",

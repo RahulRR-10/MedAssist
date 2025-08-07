@@ -86,6 +86,8 @@ class AuthService {
   // Real API login method
   Future<LoginResponse> _apiLogin(String username, String password) async {
     try {
+      AppLogger.info('Making login request to: $_loginEndpoint');
+
       final response = await http
           .post(
             Uri.parse(_loginEndpoint),
@@ -94,6 +96,13 @@ class AuthService {
           )
           .timeout(const Duration(seconds: 10));
 
+      AppLogger.info('Response status: ${response.statusCode}');
+      AppLogger.info('Response body: ${response.body}');
+
+      if (response.body.isEmpty) {
+        throw Exception('Empty response from server');
+      }
+
       final responseData = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
@@ -101,10 +110,14 @@ class AuthService {
       } else {
         return LoginResponse(
           success: false,
-          message: responseData['message'] ?? 'Login failed',
+          message:
+              responseData['message'] ??
+              responseData['error'] ??
+              'Login failed',
         );
       }
     } catch (e) {
+      AppLogger.error('API Login error: ${e.toString()}');
       throw Exception('Network error: ${e.toString()}');
     }
   }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/prescription_model.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
+import '../services/prescription_sync_service.dart';
 import '../providers/auth_provider.dart';
 import '../utils/logger.dart';
 import 'prescription_details_screen.dart';
@@ -20,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   final StorageService _storageService = StorageService();
   final NotificationService _notificationService = NotificationService();
+  final PrescriptionSyncService _syncService = PrescriptionSyncService();
 
   @override
   void initState() {
@@ -45,6 +47,18 @@ class _HomeScreenState extends State<HomeScreen> {
       // Set up FCM message handling
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
+      // Listen for FCM token refresh
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+        print('📱 FCM token refreshed: $newToken');
+        _updateFCMTokenWithNewValue(newToken);
+      });
+
+      // Get and update FCM token after successful login
+      await _updateFCMToken();
+
+      // Sync prescriptions from server
+      await _syncPrescriptionsFromServer();
+
       AppLogger.info('Notification service initialized successfully');
       print('HomeScreen: Notification service initialized successfully');
     } catch (e) {
@@ -55,6 +69,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       print('HomeScreen: Loading prescriptions...');
+      // First remove any duplicates from previous syncs
+      await _storageService.removeDuplicates();
+
       // Load saved prescriptions from local storage with timeout
       await _loadPrescriptions().timeout(
         const Duration(seconds: 10),
@@ -80,14 +97,182 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Get and update FCM token on the server
+  Future<void> _updateFCMToken() async {
+    try {
+      final fcmToken = await _notificationService.getFCMToken();
+      if (fcmToken != null && mounted) {
+        print('📱 Got FCM token: $fcmToken');
+
+        // Update FCM token on the server via AuthProvider
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.updateFCMToken(fcmToken);
+
+        AppLogger.info('FCM token updated on server');
+        print('📱 FCM token updated on server successfully');
+      } else {
+        AppLogger.warning('Failed to get FCM token');
+        print('📱 Failed to get FCM token');
+      }
+    } catch (e) {
+      AppLogger.error('Error updating FCM token', e);
+      print('📱 Error updating FCM token: $e');
+    }
+  }
+
+  // Update FCM token when it refreshes
+  Future<void> _updateFCMTokenWithNewValue(String newToken) async {
+    try {
+      print('📱 Updating refreshed FCM token: $newToken');
+
+      // Update FCM token on the server via AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.updateFCMToken(newToken);
+
+      AppLogger.info('Refreshed FCM token updated on server');
+      print('📱 Refreshed FCM token updated on server successfully');
+    } catch (e) {
+      AppLogger.error('Error updating refreshed FCM token', e);
+      print('📱 Error updating refreshed FCM token: $e');
+    }
+  }
+
+  // Sync prescriptions from server
+  Future<void> _syncPrescriptionsFromServer() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = authProvider.authToken;
+
+      if (token == null) {
+        AppLogger.warning('No auth token available for prescription sync');
+        print('💊 No auth token available for prescription sync');
+        return;
+      }
+
+      print('💊 Syncing prescriptions from server...');
+      print('💊 Auth token: ${token.substring(0, 20)}...');
+
+      // Get prescriptions from server
+      final result = await _syncService.getPrescriptions(token);
+      print('💊 Server response: $result');
+
+      if (result['success']) {
+        final serverPrescriptions = result['prescriptions'] as List? ?? [];
+        print(
+          '💊 Retrieved ${serverPrescriptions.length} prescriptions from server',
+        );
+        print('💊 Server prescriptions: $serverPrescriptions');
+
+        if (serverPrescriptions.isNotEmpty) {
+          // Get current user's username for patientId
+          final authProvider = Provider.of<AuthProvider>(
+            context,
+            listen: false,
+          );
+          final currentUsername =
+              authProvider.currentUser?.username ?? 'unknown_patient';
+          print('💊 Current username: $currentUsername');
+
+          // Convert server prescriptions to local format
+          final convertedPrescriptions = _syncService
+              .convertServerPrescriptions(
+                serverPrescriptions,
+                patientId: currentUsername,
+              );
+          print('💊 Converted prescriptions: $convertedPrescriptions');
+
+          // Save prescriptions locally (will prevent duplicates)
+          for (final prescriptionData in convertedPrescriptions) {
+            try {
+              print('💊 Converting prescription data: $prescriptionData');
+              final prescription = PrescriptionData.fromJson(prescriptionData);
+              await _storageService.savePrescription(prescription);
+              print('💊 Saved prescription: ${prescription.diagnosis}');
+            } catch (e) {
+              AppLogger.error('Error saving prescription from server', e);
+              print('💊 Error saving prescription from server: $e');
+            }
+          }
+
+          // Remove any duplicates that might have been created
+          await _storageService.removeDuplicates();
+
+          // Reload local prescriptions
+          print('💊 Reloading local prescriptions...');
+          await _loadPrescriptions();
+          print(
+            '💊 Local prescriptions count after reload: ${_prescriptions.length}',
+          );
+
+          AppLogger.info('Prescriptions synced successfully from server');
+          print('💊 Prescriptions synced successfully from server');
+        } else {
+          print('💊 No new prescriptions found on server');
+        }
+      } else {
+        AppLogger.warning('Failed to sync prescriptions: ${result['error']}');
+        print('💊 Failed to sync prescriptions: ${result['error']}');
+      }
+    } catch (e) {
+      AppLogger.error('Error syncing prescriptions from server', e);
+      print('💊 Error syncing prescriptions from server: $e');
+    }
+  }
+
+  // Manual sync prescriptions (triggered by sync button)
+  Future<void> _manualSync() async {
+    try {
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Syncing prescriptions...'),
+          backgroundColor: Colors.blue,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // First remove any existing duplicates
+      await _storageService.removeDuplicates();
+
+      // Then sync from server
+      await _syncPrescriptionsFromServer();
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Prescriptions synced successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync failed: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _loadPrescriptions() async {
     try {
+      print('📋 Loading prescriptions from storage...');
       final prescriptions = await _storageService.getPrescriptions();
+      print('📋 Loaded ${prescriptions.length} prescriptions from storage');
       setState(() {
         _prescriptions = prescriptions;
       });
+      print('📋 UI updated with ${_prescriptions.length} prescriptions');
     } catch (e) {
       AppLogger.error('Error loading prescriptions', e);
+      print('📋 Error loading prescriptions: $e');
     }
   }
 
@@ -215,6 +400,12 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         shadowColor: Colors.transparent,
         actions: [
+          // Sync prescriptions button
+          IconButton(
+            icon: Icon(Icons.sync, color: Colors.blue.shade700),
+            onPressed: () => _manualSync(),
+            tooltip: 'Sync Prescriptions',
+          ),
           Consumer<AuthProvider>(
             builder: (context, authProvider, child) {
               return PopupMenuButton<String>(
@@ -621,7 +812,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildProfileRow('Username', user.username),
                 _buildProfileRow('Email', user.email),
                 _buildProfileRow('Phone', user.phone),
-                _buildProfileRow('Gender', user.gender),
+                if (user.gender != null)
+                  _buildProfileRow('Gender', user.gender!),
                 if (user.currentIllness != null)
                   _buildProfileRow('Current Illness', user.currentIllness!),
                 if (user.address != null)

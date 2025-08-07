@@ -4,7 +4,7 @@ class User {
   final String email;
   final String phone;
   final DateTime dateOfBirth;
-  final String gender;
+  final String? gender; // Made nullable
   final Address? address;
   final EmergencyContact? emergencyContact;
   final List<MedicalHistory> medicalHistory;
@@ -20,7 +20,7 @@ class User {
     required this.email,
     required this.phone,
     required this.dateOfBirth,
-    required this.gender,
+    this.gender, // Made optional
     this.address,
     this.emergencyContact,
     this.medicalHistory = const [],
@@ -33,12 +33,15 @@ class User {
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['_id'] ?? '',
+      id: json['_id'] ?? json['id'] ?? '',
       name: json['name'] ?? '',
       email: json['email'] ?? '',
       phone: json['phone'] ?? '',
-      dateOfBirth: DateTime.parse(json['dateOfBirth']),
-      gender: json['gender'] ?? '',
+      dateOfBirth:
+          json['dateOfBirth'] != null
+              ? DateTime.parse(json['dateOfBirth'])
+              : DateTime.now(), // Default to current date if not provided
+      gender: json['gender'], // Can be null
       address:
           json['address'] != null ? Address.fromJson(json['address']) : null,
       emergencyContact:
@@ -148,8 +151,11 @@ class LoginResponse {
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
     return LoginResponse(
-      success: json['success'] ?? false,
-      message: json['message'] ?? '',
+      success:
+          json['success'] ??
+          (json['token'] != null &&
+              json['user'] != null), // Success if we have token and user
+      message: json['message'] ?? (json['error'] ?? ''),
       user: json['user'] != null ? User.fromJson(json['user']) : null,
       token: json['token'],
     );
