@@ -23,9 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _usernameController.addListener(_validateForm);
     _passwordController.addListener(_validateForm);
 
-    // Pre-fill with test credentials for easier testing
-    _usernameController.text = 'amishaab';
-    _passwordController.text = 'iukune';
+    // Note: Remove pre-filled credentials for production
+    // Users can login with any valid username/password from the database
     _validateForm();
   }
 

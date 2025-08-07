@@ -59,8 +59,8 @@ Visit: http://localhost:5000/api/health
 
 ```javascript
 {
-  username: "amishaab",
-  password: "iukune",
+  username: "patient123",
+  password: "hashedPassword",
   fcmToken: "fcm-token-here",
   name: "Patient Name",
   email: "patient@example.com",
@@ -72,8 +72,8 @@ Visit: http://localhost:5000/api/health
 
 ```javascript
 {
-  username: "amishaab",
-  password: "iukune", // Synced with patients collection
+  username: "patient123",
+  password: "hashedPassword", // Synced with patients collection
   prescriptions: [
     {
       name: "Aspirin",
@@ -198,7 +198,7 @@ curl http://localhost:5000/api/health
 ```bash
 curl -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"amishaab","password":"iukune"}'
+  -d '{"username":"your_username","password":"your_password"}'
 ```
 
 ### 3. Test Add Prescription
@@ -207,7 +207,7 @@ curl -X POST http://localhost:5000/api/auth/login \
 curl -X POST http://localhost:5000/api/admin/prescriptions \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "amishaab",
+    "username": "your_username",
     "prescription": {
       "name": "Test Medicine",
       "beforeAfterFood": "Before",
@@ -237,7 +237,7 @@ To integrate with your existing web app, simply insert prescriptions into the Mo
 ```javascript
 // Example: Adding prescription from web app
 await db.prescriptionmobiles.updateOne(
-  { username: "amishaab" },
+  { username: "patient_username" },
   {
     $push: {
       prescriptions: {
