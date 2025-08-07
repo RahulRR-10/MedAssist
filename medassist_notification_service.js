@@ -1,5 +1,4 @@
 const admin = require("firebase-admin");
-const mongoose = require("mongoose");
 
 // Firebase service account configuration
 const serviceAccount = require("./medassist-f675c-firebase-adminsdk-fbsvc-4a4975b192.json");
@@ -11,46 +10,14 @@ if (!admin.apps.length) {
   });
 }
 
-// Patient Schema for getting FCM tokens
-const PatientSchema = new mongoose.Schema({
-  firstName: String,
-  lastName: String,
-  username: String,
-  password: String,
-  fcmToken: String,
-  // ... other fields
-});
-
-const Patient = mongoose.model("Patient", PatientSchema);
+// FCM token - update this when app cache is cleared
+const FCM_TOKEN =
+  "ftRZSedhQve3-4L8KDgXwt:APA91bFYP7AyzbqNr1My5C_7SA0tZg3pcq1s8iR3YVCPNvCRuSOIJ6hBuZUg2V2TyKv45Zz3t4l5cm15kGjRFLHDoNEZHVWDSIx_qAfJQWFs6TEHQpftsCA";
 
 class MedAssistNotificationService {
-  constructor() {
+  constructor(fcmToken = FCM_TOKEN) {
+    this.fcmToken = fcmToken;
     this.scheduledReminders = new Map();
-  }
-
-  // Get FCM token for a patient from MongoDB
-  async getFCMToken(patientId) {
-    try {
-      const patient = await Patient.findById(patientId);
-      if (patient && patient.fcmToken) {
-        console.log(
-          `📱 Found FCM token for patient ${patientId}: ${patient.fcmToken.substring(
-            0,
-            20
-          )}...`
-        );
-        return patient.fcmToken;
-      } else {
-        console.log(`⚠️ No FCM token found for patient ${patientId}`);
-        return null;
-      }
-    } catch (error) {
-      console.error(
-        `❌ Error getting FCM token for patient ${patientId}:`,
-        error.message
-      );
-      return null;
-    }
   }
 
   // Send prescription received notification (immediate)
@@ -59,15 +26,6 @@ class MedAssistNotificationService {
       console.log(
         `📋 Sending prescription notification for: ${prescriptionData.diagnosis}`
       );
-
-      // Get FCM token for this patient
-      const fcmToken = await this.getFCMToken(prescriptionData.patientId);
-      if (!fcmToken) {
-        console.log(
-          `⚠️ Cannot send notification - no FCM token for patient ${prescriptionData.patientId}`
-        );
-        return false;
-      }
 
       const message = {
         notification: {
@@ -107,7 +65,7 @@ class MedAssistNotificationService {
             },
           },
         },
-        token: fcmToken,
+        token: this.fcmToken,
       };
 
       const response = await admin.messaging().send(message);

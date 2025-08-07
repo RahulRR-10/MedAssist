@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import '../models/user_model.dart';
 import '../config/app_config.dart';
 import '../utils/logger.dart';
@@ -71,10 +70,6 @@ class AuthService {
         _isLoggedIn = true;
 
         await _saveUserSession();
-
-        // Get and update FCM token after successful login
-        await _updateFCMToken();
-
         AppLogger.info('Login successful for user: ${_currentUser?.username}');
       }
 
@@ -184,21 +179,6 @@ class AuthService {
       }
     } catch (e) {
       AppLogger.error('Failed to update FCM token', e);
-    }
-  }
-
-  // Private method to get and update FCM token
-  Future<void> _updateFCMToken() async {
-    try {
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      if (fcmToken != null) {
-        AppLogger.info('Got FCM token: ${fcmToken.substring(0, 20)}...');
-        await updateFCMToken(fcmToken);
-      } else {
-        AppLogger.warning('FCM token is null');
-      }
-    } catch (e) {
-      AppLogger.error('Failed to get FCM token', e);
     }
   }
 
